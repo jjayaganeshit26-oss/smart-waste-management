@@ -1,11 +1,9 @@
 
 import streamlit as st
 import pandas as pd
-import numpy as np
 import os
+from datetime import date
 from sklearn.ensemble import RandomForestRegressor
-
-# ---------------- PAGE CONFIG ----------------
 
 st.set_page_config(
     page_title="Smart Waste Management",
@@ -13,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("♻️ Smart Waste Management System")
+st.title("♻️ Smart Waste Management Dashboard")
 st.caption("Manual Waste Monitoring and Recycling Analytics")
 
 FILE = "manual_waste_data.csv"
@@ -24,131 +22,134 @@ COLUMNS = [
     "Recycled_KG", "Vehicle_Trips"
 ]
 
-# ---------------- DATA STORAGE ----------------
-
-if not os.path.exists(FILE):
-    pd.DataFrame(columns=COLUMNS).to_csv(FILE, index=False)
-
+# ---------- LOAD DATA ----------
 
 def load_data():
-    data = pd.read_csv(FILE)
-    if not data.empty:
+    if not os.path.exists(FILE):
+        return pd.DataFrame(columns=COLUMNS)
+
+    try:
+        data = pd.read_csv(FILE)
+        if list(data.columns) != COLUMNS:
+            return pd.DataFrame(columns=COLUMNS)
+
         data["Date"] = pd.to_datetime(
             data["Date"], errors="coerce"
         )
-        for col in COLUMNS[2:]:
+
+        numeric_cols = COLUMNS[2:]
+        for col in numeric_cols:
             data[col] = pd.to_numeric(
                 data[col], errors="coerce"
-            ).fillna(0)
-    return data
+            )
+
+        data = data.dropna(subset=["Date"])
+        data[numeric_cols] = data[numeric_cols].fillna(0)
+
+        return data
+
+    except Exception:
+        st.error("Could not read the saved CSV file.")
+        return pd.DataFrame(columns=COLUMNS)
 
 
 df = load_data()
 
-# ---------------- MANUAL DATA ENTRY ----------------
+# ---------- MANUAL ENTRY ----------
 
 st.sidebar.header("📝 Manual Waste Reading")
 
-with st.sidebar.form("waste_form"):
+with st.sidebar.form("entry_form"):
 
     ward = st.selectbox(
         "Select Ward",
         [f"Ward {i}" for i in range(1, 11)]
     )
 
-    date = st.date_input("Collection Date")
+    reading_date = st.date_input(
+        "Collection Date",
+        value=date.today()
+    )
 
     st.markdown("### Waste Readings (KG)")
 
     organic = st.number_input(
-        "Organic Waste",
-        min_value=0.0,
-        value=0.0
+        "Organic Waste", min_value=0.0, value=0.0
     )
 
     plastic = st.number_input(
-        "Plastic Waste",
-        min_value=0.0,
-        value=0.0
+        "Plastic Waste", min_value=0.0, value=0.0
     )
 
     paper = st.number_input(
-        "Paper Waste",
-        min_value=0.0,
-        value=0.0
+        "Paper Waste", min_value=0.0, value=0.0
     )
 
     metal = st.number_input(
-        "Metal Waste",
-        min_value=0.0,
-        value=0.0
+        "Metal Waste", min_value=0.0, value=0.0
     )
 
     recycled = st.number_input(
-        "Total Recycled Waste (KG)",
-        min_value=0.0,
-        value=0.0
+        "Recycled Waste", min_value=0.0, value=0.0
     )
 
     trips = st.number_input(
-        "Vehicle Trips",
-        min_value=0,
-        value=1,
-        step=1
+        "Vehicle Trips", min_value=0, value=1
     )
 
-    submit = st.form_submit_button(
-        "➕ Save Waste Reading",
-        use_container_width=True
-    )
+    submit = st.form_submit_button("Save Waste Reading")
 
-    if submit:
-        total_input = organic + plastic + paper + metal
+if submit:
+    total = organic + plastic + paper + metal
 
-        if total_input <= 0:
-            st.error("Enter at least one waste reading.")
+    if total <= 0:
+        st.sidebar.error("Enter waste quantity.")
 
-        elif recycled > total_input:
-            st.error(
-                "Recycled waste cannot exceed total waste."
-            )
+    elif recycled > total:
+        st.sidebar.error(
+            "Recycled waste cannot exceed total waste."
+        )
 
-        elif df[
-            (df["Date"].dt.date == date) &
-            (df["Ward"] == ward)
-        ].shape[0] > 0:
-            st.error(
-                "A reading already exists for this ward and date. "
-                "Delete it before entering a replacement."
-            )
+    elif (
+        (df["Ward"] == ward) &
+        (df["Date"].dt.date == reading_date)
+    ).any():
+        st.sidebar.error(
+            "A reading already exists for this ward and date."
+        )
 
-        else:
-            new_record = pd.DataFrame([{
-                "Date": str(date),
-                "Ward": ward,
-                "Organic_KG": organic,
-                "Plastic_KG": plastic,
-                "Paper_KG": paper,
-                "Metal_KG": metal,
-                "Recycled_KG": recycled,
-                "Vehicle_Trips": trips
-            }])
+    else:
+        new_row = pd.DataFrame([{
+            "Date": pd.Timestamp(reading_date),
+            "Ward": ward,
+            "Organic_KG": organic,
+            "Plastic_KG": plastic,
+            "Paper_KG": paper,
+            "Metal_KG": metal,
+            "Recycled_KG": recycled,
+            "Vehicle_Trips": trips
+        }])
 
-            new_record.to_csv(
-                FILE,
-                mode="a",
-                header=False,
-                index=False
-            )
+        updated = pd.concat(
+            [df, new_row], ignore_index=True
+        )
 
-            st.success("Waste reading saved!")
-            st.rerun()
+        updated.to_csv(FILE, index=False)
 
-# ---------------- RELOAD DATA ----------------
+        st.sidebar.success("Reading saved successfully!")
+        st.rerun()
+
+# ---------- DASHBOARD ----------
 
 df = load_data()
 
-if not df.empty:
+if df.empty:
+    st.info(
+        "No waste readings available. Enter your first reading "
+        "using the sidebar."
+    )
+else:
+
     df["Total_Waste_KG"] = (
         df["Organic_KG"] +
         df["Plastic_KG"] +
@@ -157,54 +158,41 @@ if not df.empty:
     )
 
     df["Overall_Wastage_KG"] = (
-        df["Total_Waste_KG"] -
-        df["Recycled_KG"]
+        df["Total_Waste_KG"] - df["Recycled_KG"]
     )
 
-# ---------------- DASHBOARD ----------------
-
-st.header("📊 Overall Dashboard")
-
-if df.empty:
-    st.info(
-        "No readings available. Enter waste readings "
-        "using the sidebar to start the dashboard."
-    )
-else:
     total_waste = df["Total_Waste_KG"].sum()
     recycled_total = df["Recycled_KG"].sum()
     organic_total = df["Organic_KG"].sum()
-    overall_wastage = df["Overall_Wastage_KG"].sum()
-
-    active_wards = df["Ward"].nunique()
+    remaining = df["Overall_Wastage_KG"].sum()
 
     recycling_rate = (
         recycled_total / total_waste * 100
         if total_waste > 0 else 0
     )
 
-    # KPI CARDS
+    st.header("📊 Overall Waste Statistics")
 
-    c1, c2, c3, c4 = st.columns(4)
+    a, b, c, d = st.columns(4)
 
-    c1.metric("Total Waste", f"{total_waste:,.2f} KG")
-    c2.metric("Recycled Waste", f"{recycled_total:,.2f} KG")
-    c3.metric("Organic Waste", f"{organic_total:,.2f} KG")
-    c4.metric("Active Wards", active_wards)
+    a.metric("Total Waste", f"{total_waste:.2f} KG")
+    b.metric("Recycled Waste", f"{recycled_total:.2f} KG")
+    c.metric("Organic Waste", f"{organic_total:.2f} KG")
+    d.metric("Active Wards", df["Ward"].nunique())
 
-    c5, c6 = st.columns(2)
+    e, f = st.columns(2)
 
-    c5.metric("Overall Wastage", f"{overall_wastage:,.2f} KG")
-    c6.metric("Recycling Rate", f"{recycling_rate:.2f}%")
+    e.metric("Overall Wastage", f"{remaining:.2f} KG")
+    f.metric("Recycling Rate", f"{recycling_rate:.2f}%")
 
     st.divider()
 
-    # ---------------- WASTE COMPOSITION ----------------
+    # WASTE COMPOSITION
 
     st.subheader("1. Waste Composition")
 
     composition = pd.Series({
-        "Organic": df["Organic_KG"].sum(),
+        "Organic": organic_total,
         "Plastic": df["Plastic_KG"].sum(),
         "Paper": df["Paper_KG"].sum(),
         "Metal": df["Metal_KG"].sum()
@@ -212,86 +200,64 @@ else:
 
     st.bar_chart(composition)
 
-    st.subheader("Waste Composition Details")
-
-    st.dataframe(
-        composition.rename("Waste (KG)").reset_index()
-        .rename(columns={"index": "Waste Type"}),
-        use_container_width=True
-    )
-
-    # ---------------- WARD MONITORING ----------------
+    # WARD MONITORING
 
     st.subheader("2. Ward-wise Waste Monitoring")
 
     ward_data = df.groupby("Ward").agg(
         Total_Waste=("Total_Waste_KG", "sum"),
-        Recycled=("Recycled_KG", "sum"),
-        Organic=("Organic_KG", "sum")
+        Recycled=("Recycled_KG", "sum")
     )
 
-    ward_data["Remaining_Waste"] = (
-        ward_data["Total_Waste"] -
-        ward_data["Recycled"]
+    ward_data["Remaining"] = (
+        ward_data["Total_Waste"] - ward_data["Recycled"]
     )
 
     st.bar_chart(ward_data[["Total_Waste"]])
-
     st.dataframe(ward_data, use_container_width=True)
 
-    # ---------------- DATE FILTER ----------------
+    # OVERALL WASTE TREND
 
     st.subheader("3. Overall Waste Analysis")
-
-    selected_ward = st.selectbox(
-        "Filter by Ward",
-        ["All Wards"] + sorted(df["Ward"].unique())
-    )
-
-    filtered = df.copy()
-
-    if selected_ward != "All Wards":
-        filtered = filtered[
-            filtered["Ward"] == selected_ward
-        ]
-
-    st.line_chart(
-        filtered.groupby("Date")["Total_Waste_KG"].sum()
-    )
-
-    # ---------------- FORECAST ----------------
-
-    st.subheader("4. Seven-Day Waste Forecast")
 
     daily = (
         df.groupby("Date")["Total_Waste_KG"]
         .sum()
-        .reset_index()
-        .sort_values("Date")
+        .sort_index()
     )
 
-    if daily["Date"].nunique() >= 7:
-        daily["DayNumber"] = (
-            daily["Date"] - daily["Date"].min()
+    st.line_chart(daily)
+
+    # FORECAST
+
+    st.subheader("4. Seven-Day Waste Forecast")
+
+    daily_df = daily.reset_index()
+    daily_df.columns = ["Date", "Waste"]
+
+    if len(daily_df) >= 7:
+
+        daily_df["DayNumber"] = (
+            daily_df["Date"] - daily_df["Date"].min()
         ).dt.days
 
-        X = daily[["DayNumber"]]
-        y = daily["Total_Waste_KG"]
-
         model = RandomForestRegressor(
-            n_estimators=100,
+            n_estimators=50,
             random_state=42
         )
 
-        model.fit(X, y)
+        model.fit(
+            daily_df[["DayNumber"]],
+            daily_df["Waste"]
+        )
 
         future_dates = pd.date_range(
-            daily["Date"].max() + pd.Timedelta(days=1),
+            daily_df["Date"].max() + pd.Timedelta(days=1),
             periods=7
         )
 
         future_days = (
-            future_dates - daily["Date"].min()
+            future_dates - daily_df["Date"].min()
         ).days
 
         predictions = model.predict(
@@ -306,14 +272,7 @@ else:
         st.dataframe(forecast, use_container_width=True)
 
         st.line_chart(
-            forecast.set_index("Date")["Predicted_Waste_KG"]
-        )
-
-        st.download_button(
-            "Download Forecast",
-            forecast.to_csv(index=False),
-            "waste_forecast.csv",
-            "text/csv"
+            forecast.set_index("Date")
         )
 
     else:
@@ -322,181 +281,64 @@ else:
             "to generate a forecast."
         )
 
-    # ---------------- RECORDS ----------------
+    # RECORD TABLE
 
     st.subheader("5. Manual Waste Records")
 
-    display_df = df.copy()
-    display_df["Date"] = display_df["Date"].dt.strftime("%Y-%m-%d")
-
-    st.dataframe(display_df, use_container_width=True)
-
-    st.download_button(
-        "📥 Download Waste Report",
-        display_df.to_csv(index=False),
-        "waste_management_report.csv",
-        "text/csv"
-    )
-
-    # ---------------- DELETE BY DATE ----------------
-
-    st.subheader("6. Delete Records by Date")
-
-    available_dates = sorted(
-        df["Date"].dropna().dt.date.unique()
-    )
-
-    delete_date = st.selectbox(
-        "Choose date to delete",
-        available_dates,
-        key="delete_date"
-    )
-
-    if st.button("🗑️ Delete All Records for This Date"):
-        df = df[df["Date"].dt.date != delete_date]
-
-        df.drop(
-            columns=[
-                "Total_Waste_KG",
-                "Overall_Wastage_KG"
-            ],
-            errors="ignore"
-        ).to_csv(FILE, index=False)
-
-        st.success("Selected date records deleted.")
-        st.rerun()
-
-    # ---------------- RECOMMENDATIONS ----------------
-
-    st.subheader("7. Smart Recommendations")
-
-    for ward_name, row in ward_data.iterrows():
-        st.markdown(f"**{ward_name}**")
-
-        if row["Total_Waste"] > ward_data["Total_Waste"].mean():
-            st.write(
-                "High waste generation: review collection frequency."
-            )
-        else:
-            st.write(
-                "Waste generation is at or below the average."
-            )
-
-        if row["Total_Waste"] > 0:
-            ward_rate = (
-                row["Recycled"] / row["Total_Waste"] * 100
-            )
-
-            if ward_rate < 50:
-                st.write(
-                    "Improve segregation and recycling practices."
-                )
-            else:
-                st.write(
-                    "Maintain good recycling practices."
-                )
-
-st.success("Smart Waste Management Dashboard is ready!")
-
-
-# Reload latest records
-df = pd.read_csv(FILE)
-
-st.header("📊 Waste Management Dashboard")
-
-if df.empty:
-    st.info("No records yet. Enter waste data using the sidebar.")
-else:
-    df["Collected_KG"] = pd.to_numeric(
-        df["Collected_KG"], errors="coerce"
-    ).fillna(0)
-
-    df["Recycled_KG"] = pd.to_numeric(
-        df["Recycled_KG"], errors="coerce"
-    ).fillna(0)
-
-    total = df["Collected_KG"].sum()
-    recycled_total = df["Recycled_KG"].sum()
-    remaining = total - recycled_total
-    rate = recycled_total / total * 100 if total else 0
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    c1.metric("Total Waste", f"{total:,.2f} KG")
-    c2.metric("Recycled Waste", f"{recycled_total:,.2f} KG")
-    c3.metric("Remaining Waste", f"{remaining:,.2f} KG")
-    c4.metric("Recycling Rate", f"{rate:.1f}%")
-
-    st.subheader("1. Ward-wise Waste Generation")
-    ward_data = df.groupby("Ward")["Collected_KG"].sum()
-    st.bar_chart(ward_data)
-
-    st.subheader("2. Waste Type Analysis")
-    type_data = df.groupby("Waste_Type")["Collected_KG"].sum()
-    st.bar_chart(type_data)
-
-    st.subheader("3. Recycling Analysis")
-    st.bar_chart(pd.DataFrame({
-        "Waste (KG)": [recycled_total, remaining]
-    }, index=["Recycled", "Not Recycled"]))
-
-    st.subheader("4. Waste Collection Records")
     st.dataframe(df, use_container_width=True)
 
     st.download_button(
-        "Download Waste Records CSV",
+        "Download Waste Report",
         df.to_csv(index=False),
-        "waste_records.csv",
+        "waste_report.csv",
         "text/csv"
     )
 
-    st.subheader("5. Smart Recommendations")
+    # DELETE RECORDS BY DATE
 
-    for ward_name, amount in ward_data.items():
-        st.write(f"**{ward_name}:** {amount:.2f} KG collected")
+    st.subheader("6. Delete Records by Date")
 
-        if amount > ward_data.mean():
-            st.write("High waste generation. Review collection frequency.")
-        else:
-            st.write("Waste level is below the average.")
-
-st.success("Smart Waste Management Dashboard is ready!")
-
-
-
-
-# Delete records using collection date
-st.sidebar.subheader("🗑️ Delete Records by Date")
-
-df = pd.read_csv(FILE)
-
-if not df.empty:
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-
-    available_dates = sorted(
-        df["Date"].dropna().dt.date.unique()
+    delete_date = st.selectbox(
+        "Select date",
+        sorted(df["Date"].dt.date.unique()),
+        key="delete_date"
     )
 
-    selected_date = st.sidebar.selectbox(
-        "Select date to delete",
-        available_dates
-    )
+    if st.button("Delete Selected Date Records"):
 
-    if st.sidebar.button("Delete Records for Selected Date"):
-        df = df[
-            df["Date"].dt.date != selected_date
-        ]
+        updated = df[
+            df["Date"].dt.date != delete_date
+        ][COLUMNS]
 
-        df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
-        df.to_csv(FILE, index=False)
+        updated.to_csv(FILE, index=False)
 
-        st.sidebar.success(
-            f"Records for {selected_date} deleted!"
-        )
+        st.success("Records deleted successfully!")
         st.rerun()
 
-else:
-    st.sidebar.info("No records available.")
+    # RECOMMENDATIONS
+
+    st.subheader("7. Smart Recommendations")
+
+    average = ward_data["Total_Waste"].mean()
+
+    for ward_name, row in ward_data.iterrows():
+
+        st.write(f"**{ward_name}**")
+
+        if row["Total_Waste"] > average:
+            st.write("Review waste collection frequency.")
+        else:
+            st.write("Maintain the current collection schedule.")
+
+        if row["Total_Waste"] > 0:
+            rate = row["Recycled"] / row["Total_Waste"] * 100
+
+            if rate < 50:
+                st.write("Improve waste segregation and recycling.")
+            else:
+                st.write("Maintain good recycling practices.")
+
+st.success("Dashboard is ready!")
 
 # Clear all saved waste records
 if st.sidebar.button("🗑️ Clear All Waste Data"):
