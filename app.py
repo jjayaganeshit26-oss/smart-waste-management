@@ -163,3 +163,36 @@ if st.sidebar.button("🗑️ Clear All Waste Data"):
 
     st.sidebar.success("All waste records deleted!")
     st.rerun()
+
+# Select a column to clear
+st.sidebar.subheader("🧹 Clear Selected Column")
+
+columns = [
+    "Ward",
+    "Date",
+    "Waste_Type",
+    "Collected_KG",
+    "Recycled_KG",
+    "Vehicle_Trips"
+]
+
+selected_column = st.sidebar.selectbox(
+    "Choose column",
+    columns
+)
+
+if st.sidebar.button("Clear Selected Column"):
+    df = pd.read_csv(FILE)
+
+    if not df.empty:
+        df[selected_column] = ""
+
+        df.to_csv(FILE, index=False)
+
+        st.sidebar.success(
+            f"{selected_column} data cleared!"
+        )
+
+        st.rerun()
+    else:
+        st.sidebar.warning("No records available.")
