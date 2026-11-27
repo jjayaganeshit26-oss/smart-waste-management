@@ -276,3 +276,188 @@ st.download_button(
 
 st.success("Smart Waste Management Dashboard is ready!")
 
+
+import streamlit as st
+import pandas as pd
+import os
+
+# File used to store manually entered records
+MANUAL_DATA_FILE = "manual_waste_data.csv"
+
+# Initialize storage
+if not os.path.exists(MANUAL_DATA_FILE):
+    columns = [
+        "Ward",
+        "Date",
+        "Waste Type",
+        "Total Waste (kg)",
+        "Recycled Waste (kg)"
+    ]
+    pd.DataFrame(columns=columns).to_csv(
+        MANUAL_DATA_FILE, index=False
+    )
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("✍️ Manual Waste Data Entry")
+
+with st.sidebar.form("manual_waste_form"):
+
+    ward = st.selectbox(
+        "Select Ward",
+        ["Ward 1", "Ward 2", "Ward 3", "Ward 4", "Ward 5"]
+    )
+
+    collection_date = st.date_input(
+        "Collection Date"
+    )
+
+    waste_type = st.selectbox(
+        "Waste Type",
+        ["Plastic", "Paper", "Organic", "Metal", "Glass", "Other"]
+    )
+
+    total_waste = st.number_input(
+        "Total Waste (kg)",
+        min_value=0.0,
+        value=500.0,
+        step=10.0
+    )
+
+    recycled_waste = st.number_input(
+        "Recycled Waste (kg)",
+        min_value=0.0,
+        value=250.0,
+        step=10.0
+    )
+
+    submitted = st.form_submit_button(
+        "➕ Save Waste Record",
+        use_container_width=True
+    )
+
+    if submitted:
+
+        if total_waste <= 0:
+            st.error("Total waste must be greater than zero.")
+
+        elif recycled_waste > total_waste:
+            st.error(
+                "Recycled waste cannot exceed total waste."
+            )
+
+        else:
+            new_record = pd.DataFrame([{
+                "Ward": ward,
+                "Date": str(collection_date),
+                "Waste Type": waste_type,
+                "Total Waste (kg)": total_waste,
+                "Recycled Waste (kg)": recycled_waste
+            }])
+
+            new_record.to_csv(
+                MANUAL_DATA_FILE,
+                mode="a",
+                header=False,
+                index=False
+            )
+
+            st.success("Waste record saved successfully!")
+
+            st.rerun()
+
+
+# Load manually entered records
+manual_df = pd.read_csv(MANUAL_DATA_FILE)
+
+# Combine uploaded/demo data and manual records
+# Your existing main dataset should be named df
+if not manual_df.empty:
+    df = pd.concat(
+        [df, manual_df],
+        ignore_index=True
+    )
+
+# Convert numeric columns
+df["Total Waste (kg)"] = pd.to_numeric(
+    df["Total Waste (kg)"], errors="coerce"
+).fillna(0)
+
+df["Recycled Waste (kg)"] = pd.to_numeric(
+    df["Recycled Waste (kg)"], errors="coerce"
+).fillna(0)
+
+# Calculate analytics
+total_waste = df["Total Waste (kg)"].sum()
+
+recycled_waste = df["Recycled Waste (kg)"].sum()
+
+recycling_rate = (
+    recycled_waste / total_waste * 100
+    if total_waste > 0 else 0
+)
+
+total_records = len(df)
+
+# Dashboard metrics
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric(
+    "Total Waste",
+    f"{total_waste:,.0f} kg"
+)
+
+col2.metric(
+    "Recycled Waste",
+    f"{recycled_waste:,.0f} kg"
+)
+
+col3.metric(
+    "Recycling Rate",
+    f"{recycling_rate:.1f}%"
+)
+
+col4.metric(
+    "Total Records",
+    f"{total_records:,}"
+)
+
+
+# Ward-wise waste generation
+st.subheader("Ward-wise Waste Generation")
+
+ward_data = df.groupby("Ward")[
+    "Total Waste (kg)"
+].sum()
+
+st.bar_chart(ward_data)
+
+# Waste type analysis
+st.subheader("Waste Type Analysis")
+
+waste_type_data = df.groupby("Waste Type")[
+    "Total Waste (kg)"
+].sum()
+
+st.bar_chart(waste_type_data)
+
+# Recycled vs non-recycled waste
+st.subheader("Recycling Analysis")
+
+df["Non-Recycled Waste (kg)"] = (
+    df["Total Waste (kg)"] -
+    df["Recycled Waste (kg)"]
+)
+
+recycling_data = df[
+    ["Recycled Waste (kg)", "Non-Recycled Waste (kg)"]
+].sum()
+
+st.bar_chart(recycling_data)
+
+# Display all records
+st.subheader("Waste Collection Records")
+
+st.dataframe(df, use_container_width=True)
+
+
+
