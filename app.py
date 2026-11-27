@@ -181,3 +181,19 @@ if not df.empty:
 
 else:
     st.sidebar.info("No records available.")
+
+# Clear all saved waste records
+if st.sidebar.button("🗑️ Clear All Waste Data"):
+    empty_df = pd.DataFrame(columns=[
+        "Ward",
+        "Date",
+        "Waste_Type",
+        "Collected_KG",
+        "Recycled_KG",
+        "Vehicle_Trips"
+    ])
+
+    empty_df.to_csv(FILE, index=False)
+
+    st.sidebar.success("All waste records deleted!")
+    st.rerun()
