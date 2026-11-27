@@ -148,51 +148,36 @@ st.success("Smart Waste Management Dashboard is ready!")
 
 
 
-# Clear all saved waste records
-if st.sidebar.button("🗑️ Clear All Waste Data"):
-    empty_df = pd.DataFrame(columns=[
-        "Ward",
-        "Date",
-        "Waste_Type",
-        "Collected_KG",
-        "Recycled_KG",
-        "Vehicle_Trips"
-    ])
 
-    empty_df.to_csv(FILE, index=False)
+# Delete records using collection date
+st.sidebar.subheader("🗑️ Delete Records by Date")
 
-    st.sidebar.success("All waste records deleted!")
-    st.rerun()
+df = pd.read_csv(FILE)
 
-# Select a column to clear
-st.sidebar.subheader("🧹 Clear Selected Column")
+if not df.empty:
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
-columns = [
-    "Ward",
-    "Date",
-    "Waste_Type",
-    "Collected_KG",
-    "Recycled_KG",
-    "Vehicle_Trips"
-]
+    available_dates = sorted(
+        df["Date"].dropna().dt.date.unique()
+    )
 
-selected_column = st.sidebar.selectbox(
-    "Choose column",
-    columns
-)
+    selected_date = st.sidebar.selectbox(
+        "Select date to delete",
+        available_dates
+    )
 
-if st.sidebar.button("Clear Selected Column"):
-    df = pd.read_csv(FILE)
+    if st.sidebar.button("Delete Records for Selected Date"):
+        df = df[
+            df["Date"].dt.date != selected_date
+        ]
 
-    if not df.empty:
-        df[selected_column] = ""
-
+        df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
         df.to_csv(FILE, index=False)
 
         st.sidebar.success(
-            f"{selected_column} data cleared!"
+            f"Records for {selected_date} deleted!"
         )
-
         st.rerun()
-    else:
-        st.sidebar.warning("No records available.")
+
+else:
+    st.sidebar.info("No records available.")
