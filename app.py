@@ -459,5 +459,38 @@ st.subheader("Waste Collection Records")
 
 st.dataframe(df, use_container_width=True)
 
+import streamlit as st
+import pandas as pd
 
+if "waste_data" not in st.session_state:
+    st.session_state.waste_data = pd.DataFrame(
+        columns=[
+            "Ward",
+            "Date",
+            "Waste Type",
+            "Total Waste",
+            "Recycled Waste"
+        ]
+    )
+
+# Save manual record
+if st.button("Save Waste Record"):
+    new_record = {
+        "Ward": selected_ward,
+        "Date": collection_date,
+        "Waste Type": waste_type,
+        "Total Waste": total_waste,
+        "Recycled Waste": recycled_waste
+    }
+
+    st.session_state.waste_data = pd.concat(
+        [
+            st.session_state.waste_data,
+            pd.DataFrame([new_record])
+        ],
+        ignore_index=True
+    )
+
+    st.success("Waste record saved successfully!")
+    st.rerun()
 
